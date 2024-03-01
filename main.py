@@ -1,241 +1,303 @@
+import random
 import sys
+import time
+from math import sqrt
 
-import numpy as np
 import pygame
-import pymunk
+import pygame.freetype
 
 pygame.init()
-rng = np.random.default_rng()
+running = True
 
-SIZE = WIDTH, HEIGHT = np.array([570, 770])
-PAD = (24, 160)
-A = (PAD[0], PAD[1])
-B = (PAD[0], HEIGHT - PAD[0])
-C = (WIDTH - PAD[0], HEIGHT - PAD[0])
-D = (WIDTH - PAD[0], PAD[1])
-BG_COLOR = (250, 240, 148)
-W_COLOR = (250, 190, 58)
-COLORS = [
-    (245, 0, 0),
-    (250, 100, 100),
-    (150, 20, 250),
-    (250, 210, 10),
-    (250, 150, 0),
-    (245, 0, 0),
-    (250, 250, 100),
-    (255, 180, 180),
-    (255, 255, 0),
-    (100, 235, 10),
-    (0, 185, 0),
+
+my_font = pygame.font.SysFont('Comic Sans MS', 20)
+final_font = pygame.font.SysFont('Comic Sans MS', 25)
+
+
+start_time = time.time()  # Записываем время начала игры
+level = 1  # Текущий уровень сложности
+
+
+def update_level():
+    global level, gravity
+    elapsed_time = time.time() - start_time  # Вычисляем сколько времени прошло
+    if elapsed_time > 5:  # Каждые 30 секунд увеличиваем уровень сложности
+        level = 1 + int(elapsed_time // 30)
+        gravity = 1 + (level - 1) * 0.1  # Увеличиваем гравитацию с уровнем сложности
+        for ball in balls:
+            ball[3] = gravity * ball[5]  # Обновляем вертикальную скорость шариков
+
+
+def draw_level():
+    level_text = my_font.render(f'Level: {level}', True, white)
+    screen.blit(level_text, (300, 10))  # Отображаем уровень сложности в правом верхнем углу
+
+
+# настройки экрана
+screen_width, screen_height = 500, 600
+screen = pygame.display.set_mode((screen_width, screen_height))
+pygame.display.set_caption('ABYSS')
+
+
+final = 0
+lose = False
+lost_life = False
+
+
+# Цвета
+black = (40, 40, 40)
+white = (255, 255, 255)
+
+colors = [
+    (255, 0, 0),  # красный
+    (255, 165, 0),  # кранжевый
+    (255, 255, 0),  # желтый
+    (0, 255, 0),  # зеленый
+    (0, 0, 255),  # синий
+    (75, 0, 130),  # индиго
+    (238, 130, 238),  # фиолетовый
+    (255, 192, 203),  # розовый
+    (255, 255, 255)  # белый
 ]
-FPS = 240
-RADII = [17, 25, 32, 38, 50, 63, 75, 87, 100, 115, 135]
-THICKNESS = 14
-DENSITY = 0.001
-ELASTICITY = 0.1
-IMPULSE = 10000
-GRAVITY = 2000
-DAMPING = 0.8
-NEXT_DELAY = FPS
-BIAS = 0.00001
-POINTS = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66]
-shape_to_particle = dict()
 
 
-class Particle:
-    def __init__(self, pos, n, space, mapper):
-        self.n = n % 11
-        self.radius = RADII[self.n]
-        self.body = pymunk.Body(body_type=pymunk.Body.DYNAMIC)
-        self.body.position = tuple(pos)
-        self.shape = pymunk.Circle(body=self.body, radius=self.radius)
-        self.shape.density = DENSITY
-        self.shape.elasticity = ELASTICITY
-        self.shape.collision_type = 1
-        self.shape.friction = 0.2
-        self.has_collided = False
-        mapper[self.shape] = self
-        print(f"part {self.shape.friction=}")
+# виды шариков (радиус, масса, цвет)
+ball_types = [
+    (10, 1, colors[0]),
+    (20, 2, colors[1]),
+    (30, 3, colors[2]),
+    (40, 4, colors[3]),
+    (50, 5, colors[4]),
+    (60, 6, colors[5]),
+    (70, 7, colors[6]),
+    (80, 8, colors[7]),
+    (90, 9, colors[8])
+]
 
-        space.add(self.body, self.shape)
-        self.alive = True
-        print(f"Particle {id(self)} created {self.shape.elasticity}")
-
-    def draw(self, screen):
-        if self.alive:
-            c1 = np.array(COLORS[self.n])
-            c2 = (c1 * 0.8).astype(int)
-            pygame.draw.circle(screen, tuple(c2), self.body.position, self.radius)
-            pygame.draw.circle(screen, tuple(c1), self.body.position, self.radius * 0.9)
-
-    def kill(self, space):
-        space.remove(self.body, self.shape)
-        self.alive = False
-        print(f"Particle {id(self)} killed")
-
-    @property
-    def pos(self):
-        return np.array(self.body.position)
+balls = []  # список для хранения шариков (позиция, скорость, радиус, масса, цвет)
 
 
-class PreParticle:
-    def __init__(self, x, n):
-        self.n = n % 11
-        self.radius = RADII[self.n]
-        self.x = x
-        print(f"PreParticle {id(self)} created")
-
-    def draw(self, screen):
-        c1 = np.array(COLORS[self.n])
-        c2 = (c1 * 0.8).astype(int)
-        pygame.draw.circle(screen, tuple(c2), (self.x, PAD[1] // 2), self.radius)
-        pygame.draw.circle(screen, tuple(c1), (self.x, PAD[1] // 2), self.radius * 0.9)
-
-    def set_x(self, x):
-        lim = PAD[0] + self.radius + THICKNESS // 2
-        self.x = np.clip(x, lim, WIDTH - lim)
-
-    def release(self, space, mapper):
-        return Particle((self.x, PAD[1] // 2), self.n, space, mapper)
+gravity = 1  # сила гравитации
+score = 0
+next_ball_type = random.choice(ball_types[:3])
 
 
-class Wall:
-    thickness = THICKNESS
-
-    def __init__(self, a, b, space):
-        self.body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        self.shape = pymunk.Segment(self.body, a, b, self.thickness // 2)
-        self.shape.friction = 10
-        space.add(self.body, self.shape)
-        print(f"wall {self.shape.friction=}")
-
-    def draw(self, screen):
-        pygame.draw.line(screen, W_COLOR, self.shape.a, self.shape.b, self.thickness)
+def show_next_ball():
+    pygame.draw.circle(screen, next_ball_type[2], (50, screen_height - 50), next_ball_type[0])
 
 
-def resolve_collision(p1, p2, space, particles, mapper):
-    if p1.n == p2.n:
-        distance = np.linalg.norm(p1.pos - p2.pos)
-        if distance < 2 * p1.radius:
-            p1.kill(space)
-            p2.kill(space)
-            pn = Particle(np.mean([p1.pos, p2.pos], axis=0), p1.n+1, space, mapper)
-            for p in particles:
-                if p.alive:
-                    vector = p.pos - pn.pos
-                    distance = np.linalg.norm(vector)
-                    if distance < pn.radius + p.radius:
-                        impulse = IMPULSE * vector / (distance ** 2)
-                        p.body.apply_impulse_at_local_point(tuple(impulse))
-                        print(f"{impulse=} was applied to {id(p)}")
-            return pn
-    return None
+
+# рисуем бокс
+container_x, container_y, container_width, container_height = 150, 100, 300, 500
+container_color = white
+container_border = pygame.Rect(container_x, container_y, container_width, container_height)
 
 
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("FRUITGUY")
-clock = pygame.time.Clock()
-pygame.font.init()
-scorefont = pygame.font.SysFont("monospace", 32)
-overfont = pygame.font.SysFont("monospace", 72)
-
-space = pymunk.Space()
-space.gravity = (0, GRAVITY)
-space.damping = DAMPING
-space.collision_bias = BIAS
-print(f"{space.damping=}")
-print(f"{space.collision_bias=}")
-print(f"{space.collision_slop=}")
-
-# Walls
-pad = 20
-left = Wall(A, B, space)
-bottom = Wall(B, C, space)
-right = Wall(C, D, space)
-walls = [left, bottom, right]
+"""
+ball[0]: Позиция шарика по оси X (горизонтальная координата).
+ball[1]: Позиция шарика по оси Y (вертикальная координата).
+ball[2]: Горизонтальная скорость шарика.
+ball[3]: Вертикальная скорость шарика.
+ball[4]: Радиус шарика.
+ball[5]: Масса шарика.
+ball[6]: Цвет шарика.
+"""
 
 
-# List to store particles
-wait_for_next = 0
-next_particle = PreParticle(WIDTH//2, rng.integers(0, 5))
-particles = []
 
-# Collision Handler
-handler = space.add_collision_handler(1, 1)
+def handle_collisions():
+    global balls, score, final  # очев
+    balls_to_remove = []
+    new_balls = []
+    if not final:
+
+        for i, ball1 in enumerate(balls):
+
+            for j, ball2 in enumerate(balls[i + 1:], start=i + 1):
+
+                # расчет результативного вектора
+                dx = ball2[0] - ball1[0]
+                dy = ball2[1] - ball1[1]
+                #
+                # if dy == 120:
+                #     final = True
+                #     break
+
+                distance = sqrt(dx ** 2 + dy ** 2)
+
+                if distance < ball1[4] + ball2[4]:
+                    if ball1[4] == ball2[4] and ball1 not in balls_to_remove and ball2 not in balls_to_remove:
+                        # находим следующий размер шарика
+                        for size, mass, colour in ball_types:
+                            if size == ball1[4]:
+                                index = ball_types.index((size, mass, colour))
+                                if index + 1 < len(ball_types):
+
+                                    new_size, new_mass, new_colour = ball_types[index + 1]
+                                    new_x = (ball1[0] + ball2[0]) / 2
+                                    new_y = (ball1[1] + ball2[1]) / 2
+                                    new_balls.append(
+                                        [new_x, new_y, 0, gravity * new_mass, new_size, new_mass, new_colour])
+                                    score += new_mass * 2
+                                    break
+
+                                else:
+                                    final = True
+                                    break
+
+                        balls_to_remove.append(ball1)
+
+                        balls_to_remove.append(ball2)
+                    else:
+                        # обрабатываем нахлёст
+
+                        overlap = (ball1[4] + ball2[4]) - distance
+
+                        # берем нормализированный вектор
+                        nx = dx / distance
+                        ny = dy / distance
+
+                        # распределяем перекрытие между шариками в зависимости от их масс
+                        total_mass = ball1[5] + ball2[5]
+                        shift_ball1 = (overlap * (ball2[5] / total_mass))
+                        shift_ball2 = (overlap * (ball1[5] / total_mass))
+
+                        # откидываем шары назад
+                        ball1[0] -= nx * shift_ball1
+                        ball1[1] -= ny * shift_ball1
+                        ball2[0] += nx * shift_ball2
+                        ball2[1] += ny * shift_ball2
 
 
-def collide(arbiter, space, data):
-    sh1, sh2 = arbiter.shapes
-    _mapper = data["mapper"]
-    pa1 = _mapper[sh1]
-    pa2 = _mapper[sh2]
-    cond = bool(pa1.n != pa2.n)
-    pa1.has_collided = cond
-    pa2.has_collided = cond
-    if not cond:
-        new_particle = resolve_collision(pa1, pa2, space, data["particles"], _mapper)
-        data["particles"].append(new_particle)
-        data["score"] += POINTS[pa1.n]
-    return cond
+        # удаляем старые шарики и добавляем новые
+        balls = [ball for ball in balls if ball not in balls_to_remove] + new_balls
 
 
-handler.begin = collide
-handler.data["mapper"] = shape_to_particle
-handler.data["particles"] = particles
-handler.data["score"] = 0
+def update_balls():
+    global running, lost_life, lose
+    for ball in balls:
+        ball[1] += gravity  # вертикальное движение
+        # ball[3] += gravity  # добавляем гравитацию
 
-# Main game loop
-game_over = False
+        # ограничение движения внутри контейнера
+        if ball[1] + ball[2] > container_y + container_height:
+            ball[1] = container_y + container_height - ball[2]
 
-while not game_over:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        elif event.type == pygame.KEYDOWN:
-            if event.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                particles.append(next_particle.release(space, shape_to_particle))
-                wait_for_next = NEXT_DELAY
-            elif event.key in [pygame.K_q, pygame.K_ESCAPE]:
-                pygame.quit()
-                sys.exit()
-        elif event.type == pygame.MOUSEBUTTONDOWN and wait_for_next == 0:
-            particles.append(next_particle.release(space, shape_to_particle))
-            wait_for_next = NEXT_DELAY
+        # проверка верхней границы
+        if ball[1] - ball[2] <= container_y:
+            lose = True  # выводим в мэйн и останавливаем
+            break
 
-    next_particle.set_x(pygame.mouse.get_pos()[0])
+    if not final and not lose:
+        for ball in balls:
+            ball[0] += ball[2]  # горизонтальное движение
+            ball[1] += ball[3]  # вертикальное движение
 
-    if wait_for_next > 1:
-        wait_for_next -= 1
-    elif wait_for_next == 1:
-        next_particle = PreParticle(next_particle.x, rng.integers(0, 5))
-        wait_for_next -= 1
+            # запрет шарикам вылетать за бокс
+            if ball[0] < container_x + ball[4]:
+                ball[0] = container_x + ball[4]
+            elif ball[0] > container_x + container_width - ball[4]:
+                ball[0] = container_x + container_width - ball[4]
 
-    # Draw background and particles
-    screen.fill(BG_COLOR)
-    if wait_for_next == 0:
-        next_particle.draw(screen)
-    for w in walls:
-        w.draw(screen)
-    for p in particles:
-        p.draw(screen)
-        if p.pos[1] < PAD[1] and p.has_collided:
-            label = overfont.render("Game Over!", 1, (0, 0, 0))
-            screen.blit(label, PAD)
-            game_over = True
-    label = scorefont.render(f"Score: {handler.data['score']}", 1, (0, 0, 0))
-    screen.blit(label, (10, 10))
+            # вообще оно должно было работать по другому, но отталкивание шаров идет и на тех, которые находятся в сосуде
+            # надо при оверлапе переделать
+            if ball[1] < container_y + ball[4]:
+                ball[1] = container_y + ball[4]
+            elif ball[1] > container_y + container_height - ball[4]:
+                ball[1] = container_y + container_height - ball[4]
+                ball[3] = 0  # останавливаем вертикальное движение при касании дна
 
-    space.step(1/FPS)
-    pygame.display.update()
-    clock.tick(FPS)
 
-while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        elif event.type == pygame.KEYDOWN:
-            if event.key in [pygame.K_RETURN, pygame.K_SPACE, pygame.K_q, pygame.K_ESCAPE]:
-                pygame.quit()
-                sys.exit()
+# text_surface = my_font.render('Some Text', False, (250, 250, 0))
+# screen.blit(text_surface, (10, 10))
+
+lives = 3  # Игрок начинает с 3 жизнями
+
+
+def lose_life():
+    global lives, lose, lost_life
+
+    if lost_life:  # Если условие проигрыша активировано
+        lives -= 1  # Теряем одну жизнь
+        if lives == 0:  # Если жизни закончились, игра окончательно проиграна
+            lose = True  # Активируем финальное состояние игры
+        else:
+            lost_life = False  # Сбрасываем условие проигрыша для продолжения игры
+
+
+def draw_lives():
+
+    lives_text = my_font.render(f'Lives: {lives}', True, white)
+    screen.blit(lives_text, (150, 10))  # Отображаем количество жизней в левом верхнем углу
+
+
+def draw_text(text):
+
+    img = my_font.render(text, True, white)
+    screen.blit(img, (10, 10))
+
+
+def draw_final_text(text):
+
+    img = final_font.render(text, True, white)
+    screen.blit(img, (30, 30))
+
+    # мэйн
+
+
+
+while running:
+    if not final and not lose:
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                x, y = event.pos
+                if container_border.collidepoint(x, y):
+                    # выбор случайного типа шарика из первых трёх?
+
+                    radius, mass, color = random.choice(ball_types[:4])
+                    balls.append([x, 150, 0, gravity * next_ball_type[1], next_ball_type[0], next_ball_type[1],
+                                  next_ball_type[2]])  # добавляем шарик с указанным цветом
+                    next_ball_type = random.choice(ball_types[:4])
+
+        # отрисовка сосуда
+        screen.fill(black)
+        update_level()
+        draw_lives()
+        draw_level()
+        lose_life()
+
+        pygame.draw.rect(screen, container_color, container_border, 2)
+
+        draw_text(f'Ваш счёт {score}')
+
+        update_balls()
+        handle_collisions()
+
+        # отрисовка шариков
+
+        for ball in balls:
+            pygame.draw.circle(screen, ball[6], (int(ball[0]), int(ball[1])), ball[4])
+        show_next_ball()
+        pygame.display.update()
+        pygame.display.flip()
+        pygame.time.delay(10)
+
+    elif final:
+        screen.fill(black)
+        draw_final_text(f"Вы победили! Ваш счёт: {score}")
+        pygame.display.update()
+        pygame.display.flip()
+        pygame.time.delay(10)
+
+    elif lose:
+        screen.fill(black)
+        draw_final_text(f"Вы проиграли! Ваш счёт: {score}")
+        pygame.display.update()
+        pygame.display.flip()
+        pygame.time.delay(10)
+
+pygame.quit()
+sys.exit()
