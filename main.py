@@ -13,7 +13,8 @@ running = True
 my_font = pygame.font.SysFont('Comic Sans MS', 20)
 final_font = pygame.font.SysFont('Comic Sans MS', 25)
 
-
+with open('styles.txt', 'r') as file:
+    data = file.read()
 start_time = time.time()  # Записываем время начала игры
 level = 1  # Текущий уровень сложности
 
@@ -36,7 +37,7 @@ def draw_level():
 # настройки экрана
 screen_width, screen_height = 500, 600
 screen = pygame.display.set_mode((screen_width, screen_height))
-pygame.display.set_caption('ABYSS')
+pygame.display.set_caption('FruitGuy')
 
 
 final = 0
@@ -81,6 +82,24 @@ gravity = 1  # сила гравитации
 score = 0
 next_ball_type = random.choice(ball_types[:3])
 
+def show_start_screen():
+    start = False
+    while not start:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                start = True  # Пользователь нажал клавишу или кликнул мышью, начинаем игру
+
+        screen.fill(black)
+        text = my_font.render(data, True, white)
+        text_rect = text.get_rect(center=(screen_width / 2, screen_height / 2))
+        screen.blit(text, text_rect)
+        pygame.display.flip()
+
+
+show_start_screen()
 
 def show_next_ball():
     pygame.draw.circle(screen, next_ball_type[2], (50, screen_height - 50), next_ball_type[0])
