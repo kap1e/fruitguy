@@ -9,7 +9,6 @@ import pygame.freetype
 pygame.init()
 running = True
 
-
 my_font = pygame.font.SysFont('Comic Sans MS', 20)
 final_font = pygame.font.SysFont('Comic Sans MS', 25)
 
@@ -17,6 +16,16 @@ with open('styles.txt', 'r') as file:
     data = file.read()
 start_time = time.time()  # Записываем время начала игры
 level = 1  # Текущий уровень сложности
+
+
+class Ball(pygame.sprite.Sprite):
+    def __init__(self, radius, mass, color_name, position):
+        super().__init__()
+        self.image = pygame.image.load(f'sprites/{color_name}.png').convert_alpha()
+        self.image = pygame.transform.scale(self.image, (radius * 2, radius * 2))
+        self.rect = self.image.get_rect(center=position)
+        self.mass = mass
+        self.velocity_y = gravity * mass
 
 
 def update_level():
@@ -39,11 +48,9 @@ screen_width, screen_height = 500, 600
 screen = pygame.display.set_mode((screen_width, screen_height))
 pygame.display.set_caption('FruitGuy')
 
-
 final = 0
 lose = False
 lost_life = False
-
 
 # Цвета
 black = (40, 40, 40)
@@ -61,7 +68,6 @@ colors = [
     (255, 255, 255)  # белый
 ]
 
-
 # виды шариков (радиус, масса, цвет)
 ball_types = [
     (10, 1, colors[0]),
@@ -77,10 +83,10 @@ ball_types = [
 
 balls = []  # список для хранения шариков (позиция, скорость, радиус, масса, цвет)
 
-
 gravity = 1  # сила гравитации
 score = 0
 next_ball_type = random.choice(ball_types[:3])
+
 
 def show_start_screen():
     start = False
@@ -101,16 +107,15 @@ def show_start_screen():
 
 show_start_screen()
 
+
 def show_next_ball():
     pygame.draw.circle(screen, next_ball_type[2], (50, screen_height - 50), next_ball_type[0])
-
 
 
 # рисуем бокс
 container_x, container_y, container_width, container_height = 150, 100, 300, 500
 container_color = white
 container_border = pygame.Rect(container_x, container_y, container_width, container_height)
-
 
 """
 ball[0]: Позиция шарика по оси X (горизонтальная координата).
@@ -121,7 +126,6 @@ ball[4]: Радиус шарика.
 ball[5]: Масса шарика.
 ball[6]: Цвет шарика.
 """
-
 
 
 def handle_collisions():
@@ -187,7 +191,6 @@ def handle_collisions():
                         ball2[0] += nx * shift_ball2
                         ball2[1] += ny * shift_ball2
 
-
         # удаляем старые шарики и добавляем новые
         balls = [ball for ball in balls if ball not in balls_to_remove] + new_balls
 
@@ -245,24 +248,20 @@ def lose_life():
 
 
 def draw_lives():
-
     lives_text = my_font.render(f'Lives: {lives}', True, white)
     screen.blit(lives_text, (150, 10))  # Отображаем количество жизней в левом верхнем углу
 
 
 def draw_text(text):
-
     img = my_font.render(text, True, white)
     screen.blit(img, (10, 10))
 
 
 def draw_final_text(text):
-
     img = final_font.render(text, True, white)
     screen.blit(img, (30, 30))
 
     # мэйн
-
 
 
 while running:
